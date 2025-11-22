@@ -28,8 +28,8 @@ compress = do
     putStrLn "Building Canonical Codes..."
     let freqs = frequencyCount content
     let rawTree = createTree freqs
-    let lenTable = getBitLengths rawTree      -- Get lengths (Standard -> Canonical)
-    let canonTable = canonicalCodes lenTable  -- Assign codes sequentially
+    let lenTable = getBitLengths rawTree
+    let canonTable = canonicalCodes lenTable 
     
     putStrLn "Streaming Encode..."
     let (packedBytes, validBits) = encode canonTable content
@@ -48,7 +48,7 @@ decompress = do
     putStrLn "Reading Binary..."
     (lenTable, packedBytes, validBits) <- readBinary inFile
     
-    putStrLn "Reconstructing Canonical Tree..."
+    putStrLn "Reconstructing Tree..."
     let canonTable = canonicalCodes lenTable
     let tree = rebuildTreeFromCodes canonTable
     

@@ -1,16 +1,17 @@
 module DataTypes where
 
-import Data.Word (Word8)
-
+-- | Huffman Tree (Standard)
 data HuffmanTree = Leaf Char Int
                  | Node Int HuffmanTree HuffmanTree
                  deriving (Show, Eq, Ord)
 
--- | A Map from Char to its Bit Length (e.g., 'A' -> 3 bits)
+-- | MAPS:
+-- BitLenTable: 'A' -> 3 bits (Used for canonical generation)
 type BitLenTable = [(Char, Int)]
 
--- | A Map from Char to its actual Bits (e.g., 'A' -> [1, 0, 1])
-type CodeTable = [(Char, [Int])]
+-- | CodeTable: 'A' -> (Value, Length)
+--   Example: 'A' -> (5, 3)  (Binary 101, Length 3)
+type CodeTable = [(Char, (Int, Int))]
 
 weight :: HuffmanTree -> Int
 weight (Leaf _ w) = w

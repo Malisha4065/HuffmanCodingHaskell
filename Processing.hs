@@ -2,13 +2,14 @@ module Processing where
 
 import DataTypes
 import Utils
-import Data.List (insert, sortBy)
-import Data.Ord (comparing)
+import Data.List (insert, sortBy, foldl')
 import Data.Bits (setBit, testBit, zeroBits, shiftL, shiftR, (.&.), (.|.))
 import Data.Word (Word8)
 import qualified Data.Map as Map
 
--- === 1. TREE BUILDING (Standard) ===
+-- ============================================================================
+-- 1. TREE BUILDING & CANONICAL CODES
+-- ============================================================================
 
 makeLeaves :: [(Char, Int)] -> [HuffmanTree]
 makeLeaves = map (\(c, w) -> Leaf c w)
@@ -26,86 +27,102 @@ createTree freqs =
        then buildTree (Leaf '\0' 0 : leaves)
        else buildTree leaves
 
--- === 2. CANONICAL LOGIC ===
-
--- | Extract just the bit lengths from the tree (Depth = Length)
 getBitLengths :: HuffmanTree -> BitLenTable
 getBitLengths tree = traverse tree 0
   where
     traverse (Leaf c _) depth = [(c, depth)]
     traverse (Node _ l r) depth = traverse l (depth + 1) ++ traverse r (depth + 1)
 
--- | Generate Codes purely from Lengths (Canonical Algorithm)
---   1. Sort by Length, then Alphabetical
---   2. Assign codes sequentially
+-- | Canonical: Returns (Value, Length)
 canonicalCodes :: BitLenTable -> CodeTable
 canonicalCodes lenTable = 
     let sorted = sortBy (\(c1, l1) (c2, l2) -> 
             if l1 == l2 then compare c1 c2 else compare l1 l2) lenTable
         
-        assign :: [(Char, Int)] -> Int -> Int -> CodeTable
         assign [] _ _ = []
         assign ((c, len):xs) currentCode currentLen =
-            let -- Shift code left if length increases (e.g. len 3->4 means code << 1)
-                nextCode = currentCode `shiftL` (len - currentLen)
-                bits = intToBits len nextCode
-            in (c, bits) : assign xs (nextCode + 1) len
+            let nextCode = currentCode `shiftL` (len - currentLen)
+            in (c, (nextCode, len)) : assign xs (nextCode + 1) len
 
     in assign sorted 0 0
 
--- | Helper: Turn an Integer into a list of Bits of specific length
-intToBits :: Int -> Int -> [Int]
-intToBits len val = [if testBit val i then 1 else 0 | i <- reverse [0..len-1]]
+-- ============================================================================
+-- 2. ENCODER (Bitwise Shifting)
+-- ============================================================================
 
--- === 3. EFFICIENT ENCODING (Direct String -> [Word8]) ===
---   Eliminates the intermediate [Bit] list to save RAM.
-
+-- | Encodes directly to Word8 using an Int accumulator.
+--   Logic: `acc = (acc << len) | code`
 encode :: CodeTable -> String -> ([Word8], Int)
 encode table str = 
-    let codeMap = Map.fromList table -- Fast lookup
+    let codeMap = Map.fromList table
         
-        -- Accumulator: (Current Byte Value, Bits Filled Count, Output Bytes)
-        go [] acc count res = (reverse (if count > 0 then (acc `shiftL` (8-count)) : res else res), count)
-        go (c:cs) acc count res = 
+        -- Main loop: accum = current bits, count = how many bits in accum
+        process [] acc count res = 
+            -- Flush remaining bits (padding)
+            if count > 0 
+            then (reverse (fromIntegral (acc `shiftL` (8 - count)) : res), count)
+            else (reverse res, 0)
+
+        process (c:cs) acc count res =
             case Map.lookup c codeMap of
-                Just bits -> 
-                    let (newAcc, newCount, newRes) = pushBits acc count res bits
-                    in go cs newAcc newCount newRes
                 Nothing -> error "Char not in table"
+                Just (val, len) -> 
+                    -- Merge new code into accumulator
+                    let newAcc = (acc `shiftL` len) .|. val
+                        newCount = count + len
+                    in flushBytes cs newAcc newCount res
 
-        pushBits acc count res [] = (acc, count, res)
-        pushBits acc count res (b:bs)
-            | count == 8 = pushBits 0 0 (acc : res) (b:bs) -- Flush byte
-            | otherwise  = pushBits ((acc `shiftL` 1) .|. fromIntegral b) (count + 1) res bs
+        -- Flush 8-bit chunks from the accumulator to the output list
+        flushBytes cs acc count res
+            | count >= 8 = 
+                let byteVal = fromIntegral (acc `shiftR` (count - 8)) :: Word8
+                    remCount = count - 8
+                    mask = (1 `shiftL` remCount) - 1
+                    remAcc = acc .&. mask -- Keep only remaining bits
+                in flushBytes cs remAcc remCount (byteVal : res)
+            | otherwise = process cs acc count res
 
-    in go str 0 0 []
+    in process str 0 0 []
 
--- === 4. DECODING (Rebuild Tree from Canonical Codes) ===
+-- ============================================================================
+-- 3. DECODER (State Machine)
+-- ============================================================================
 
--- | We don't need the original tree. We rebuild a clean one from the canonical codes.
+-- | Rebuild tree from canonical lengths
 rebuildTreeFromCodes :: CodeTable -> HuffmanTree
 rebuildTreeFromCodes table = foldl insertCode (Node 0 (Leaf ' ' 0) (Leaf ' ' 0)) table
   where
-    insertCode root (c, bits) = insertRec root bits c
+    insertCode root (c, (val, len)) = insertRec root len val c
     
-    insertRec (Leaf _ _) [] c = Leaf c 0 -- Overwrite dummy leaf
-    insertRec (Node _ l r) [] c = Leaf c 0
-    insertRec (Leaf _ _) (b:bs) c = insertRec (Node 0 (Leaf '\0' 0) (Leaf '\0' 0)) (b:bs) c -- Expand leaf
-    insertRec (Node w l r) (0:bs) c = Node w (insertRec l bs c) r
-    insertRec (Node w l r) (1:bs) c = Node w l (insertRec r bs c)
-    insertRec _ _ _ = error "Bad tree state"
+    insertRec (Leaf _ _) _ _ c = Leaf c 0
+    insertRec (Node _ l r) 0 _ c = Leaf c 0 -- Reached depth
+    insertRec (Node w l r) d bits c = 
+        -- Check the MSB of the current 'bits' relative to depth 'd'
+        let bit = testBit bits (d - 1) 
+        in if not bit -- 0 is False (Left), 1 is True (Right)
+           then Node w (insertRec l (d-1) bits c) r
+           else Node w l (insertRec r (d-1) bits c)
 
+-- | Decodes Word8 stream directly. No [Bit] list conversion.
 decode :: HuffmanTree -> [Word8] -> Int -> String
-decode tree bytes validBitsLastByte = 
-    let -- Convert bytes to stream of bits (lazy)
-        allBits = concatMap byteToBits (init bytes) ++ take validBitsLastByte (byteToBits (last bytes))
-    in decodeStream tree tree allBits
+decode fullTree bytes validBitsLastByte = 
+    go bytes fullTree 7 -- Start at bit 7 (MSB) of first byte
   where
-    byteToBits b = [if testBit b i then 1 else 0 | i <- [7,6..0]]
-
-    decodeStream _ (Leaf c _) [] = [c]
-    decodeStream root (Leaf c _) rest = c : decodeStream root root rest
-    decodeStream _ (Node _ _ _) [] = []
-    decodeStream root (Node _ l r) (b:bs)
-        | b == 0 = decodeStream root l bs
-        | b == 1 = decodeStream root r bs
+    -- End of stream check
+    go [] _ _ = []
+    
+    -- Last byte special handling (padding)
+    go [lastByte] node bitIdx
+        | bitIdx < (7 - validBitsLastByte + 1) = [] -- Stop if we hit padding
+    
+    -- Normal processing
+    go (b:bs) node bitIdx
+        | bitIdx < 0 = go bs node 7 -- Next byte
+        | otherwise = 
+            let direction = testBit b bitIdx -- Get bit at index (True/1 or False/0)
+                nextNode = case node of
+                    Node _ l r -> if not direction then l else r
+                    Leaf _ _   -> error "Logic error: Started at leaf"
+            in case nextNode of
+                Leaf c _   -> c : go (b:bs) fullTree bitIdx -- Found char, restart at root, SAME bit
+                Node _ _ _ -> go (b:bs) nextNode (bitIdx - 1) -- Keep going down, NEXT bit
