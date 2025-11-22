@@ -51,14 +51,11 @@ canonicalCodes lenTable =
 -- ============================================================================
 
 -- | Encodes directly to Word8 using an Int accumulator.
---   Logic: `acc = (acc << len) | code`
 encode :: CodeTable -> String -> ([Word8], Int)
 encode table str = 
     let codeMap = Map.fromList table
         
-        -- Main loop: accum = current bits, count = how many bits in accum
         process [] acc count res = 
-            -- Flush remaining bits (padding)
             if count > 0 
             then (reverse (fromIntegral (acc `shiftL` (8 - count)) : res), count)
             else (reverse res, 0)
@@ -67,12 +64,10 @@ encode table str =
             case Map.lookup c codeMap of
                 Nothing -> error "Char not in table"
                 Just (val, len) -> 
-                    -- Merge new code into accumulator
                     let newAcc = (acc `shiftL` len) .|. val
                         newCount = count + len
                     in flushBytes cs newAcc newCount res
 
-        -- Flush 8-bit chunks from the accumulator to the output list
         flushBytes cs acc count res
             | count >= 8 = 
                 let byteVal = fromIntegral (acc `shiftR` (count - 8)) :: Word8
@@ -88,40 +83,45 @@ encode table str =
 -- 3. DECODER (State Machine)
 -- ============================================================================
 
--- | Rebuild tree from canonical lengths
 rebuildTreeFromCodes :: CodeTable -> HuffmanTree
-rebuildTreeFromCodes table = foldl insertCode (Node 0 (Leaf ' ' 0) (Leaf ' ' 0)) table
+rebuildTreeFromCodes table = foldl insertCode (Node 0 (Leaf '\0' 0) (Leaf '\0' 0)) table
   where
     insertCode root (c, (val, len)) = insertRec root len val c
     
-    insertRec (Leaf _ _) _ _ c = Leaf c 0
-    insertRec (Node _ l r) 0 _ c = Leaf c 0
+    -- Case 1: Reached destination (depth 0). Create the real Leaf.
+    insertRec _ 0 _ c = Leaf c 0 
+    
+    -- Case 2: Met a Dummy Leaf but need to go deeper. Expand it into a Node!
+    insertRec (Leaf _ _) d bits c = insertRec (Node 0 (Leaf '\0' 0) (Leaf '\0' 0)) d bits c
+
+    -- Case 3: Traverse Node. Decides Left (0) or Right (1) based on bit.
     insertRec (Node w l r) d bits c = 
-        -- Check the MSB of the current 'bits' relative to depth 'd'
         let bit = testBit bits (d - 1) 
         in if not bit 
            then Node w (insertRec l (d-1) bits c) r
            else Node w l (insertRec r (d-1) bits c)
 
 decode :: HuffmanTree -> [Word8] -> Int -> String
-decode fullTree bytes validBitsLastByte = 
-    go bytes fullTree 7 -- Start at bit 7 (MSB)
+decode fullTree bytes validBitsInput = 
+    go bytes fullTree 7 
   where
+    validBitsLastByte = if validBitsInput == 0 then 8 else validBitsInput
+
     go [] _ _ = []
     
     go [lastByte] node bitIdx
-        | bitIdx < (7 - validBitsLastByte + 1) = [] -- Stop if hitting padding
+        | bitIdx < (7 - validBitsLastByte + 1) = [] -- Stop at padding
     
     go (b:bs) node bitIdx
-        | bitIdx < 0 = go bs node 7 -- Move to next byte
+        | bitIdx < 0 = go bs node 7 -- Next byte
         | otherwise = 
             let direction = testBit b bitIdx
                 nextNode = case node of
                     Node _ l r -> if not direction then l else r
                     Leaf _ _   -> error "Logic error: Started at leaf"
             in case nextNode of
-                -- We found a char. Emit it, restart at root, AND CONSUME THE BIT (bitIdx - 1)
+                -- Found char: Emit 'c', restart at Root, CONSUME bit (bitIdx - 1)
                 Leaf c _   -> c : go (b:bs) fullTree (bitIdx - 1)
                 
-                -- Keep traversing down the tree, consuming the bit
+                -- Keep traversing
                 Node _ _ _ -> go (b:bs) nextNode (bitIdx - 1)
