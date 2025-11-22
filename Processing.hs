@@ -8,8 +8,7 @@ import Data.List (insert)
 makeLeaves :: [(Char, Int)] -> [HuffmanTree]
 makeLeaves = map (\(c, w) -> Leaf c w)
 
--- | 2. Core Huffman Algorithm: Combine lowest weight trees recursively
---   until one tree remains.
+-- | 2. Core Huffman Algorithm
 buildTree :: [HuffmanTree] -> HuffmanTree
 buildTree [t] = t
 buildTree (t1:t2:ts) = buildTree (insert newNode ts)
@@ -19,9 +18,14 @@ buildTree [] = error "Empty content cannot be compressed"
 
 -- | Wrapper to create tree from raw string
 createHuffmanTree :: String -> HuffmanTree
-createHuffmanTree body = buildTree $ sortList $ makeLeaves $ frequencyCount body
+createHuffmanTree body = 
+    let leaves = makeLeaves $ frequencyCount body
+        sortedLeaves = sortList leaves
+    in if length sortedLeaves == 1
+       then buildTree (Leaf '\0' 0 : sortedLeaves) -- Add dummy NULL leaf
+       else buildTree sortedLeaves
 
--- | 3. Generate the CodeTable by traversing the Tree recursively
+-- | 3. Generate the CodeTable
 convertTreeToCodes :: HuffmanTree -> CodeTable
 convertTreeToCodes tree = traverse tree ""
   where
@@ -29,7 +33,7 @@ convertTreeToCodes tree = traverse tree ""
     traverse (Node _ left right) code =
         traverse left (code ++ "0") ++ traverse right (code ++ "1")
 
--- | 4. Encode: Transform the string into bit sequence using the table
+-- | 4. Encode
 encode :: CodeTable -> String -> String
 encode table str = concatMap (lookUpCode table) str
 
@@ -39,15 +43,18 @@ lookUpCode ((c, code):xs) char
     | c == char = code
     | otherwise = lookUpCode xs char
 
--- | 5. Decode: Transform bit sequence back to string using the Tree
+-- | 5. Decode
 decode :: HuffmanTree -> String -> String
 decode tree bits = decodeRec tree tree bits
   where
-    -- Reached a leaf: append char and reset to root
+    -- Edge case: If we reached a leaf and have no bits left, emit char and stop
     decodeRec _ (Leaf c _) [] = [c]
+    
+    -- Standard case: We reached a leaf, emit char, and reset to root with remaining bits
     decodeRec root (Leaf c _) rest = c : decodeRec root root rest
-    -- Traversing nodes
-    decodeRec _ (Node _ _ _) [] = [] -- End of stream
+    
+    -- Traversal: If we are at a Node, use the bit to decide direction
+    decodeRec _ (Node _ _ _) [] = [] -- No bits left, stop
     decodeRec root (Node _ left right) (b:bs)
         | b == '0'  = decodeRec root left bs
         | b == '1'  = decodeRec root right bs
