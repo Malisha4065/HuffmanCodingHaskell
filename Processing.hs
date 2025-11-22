@@ -78,7 +78,7 @@ encode table str =
                 let byteVal = fromIntegral (acc `shiftR` (count - 8)) :: Word8
                     remCount = count - 8
                     mask = (1 `shiftL` remCount) - 1
-                    remAcc = acc .&. mask -- Keep only remaining bits
+                    remAcc = acc .&. mask
                 in flushBytes cs remAcc remCount (byteVal : res)
             | otherwise = process cs acc count res
 
@@ -95,34 +95,33 @@ rebuildTreeFromCodes table = foldl insertCode (Node 0 (Leaf ' ' 0) (Leaf ' ' 0))
     insertCode root (c, (val, len)) = insertRec root len val c
     
     insertRec (Leaf _ _) _ _ c = Leaf c 0
-    insertRec (Node _ l r) 0 _ c = Leaf c 0 -- Reached depth
+    insertRec (Node _ l r) 0 _ c = Leaf c 0
     insertRec (Node w l r) d bits c = 
         -- Check the MSB of the current 'bits' relative to depth 'd'
         let bit = testBit bits (d - 1) 
-        in if not bit -- 0 is False (Left), 1 is True (Right)
+        in if not bit 
            then Node w (insertRec l (d-1) bits c) r
            else Node w l (insertRec r (d-1) bits c)
 
--- | Decodes Word8 stream directly. No [Bit] list conversion.
 decode :: HuffmanTree -> [Word8] -> Int -> String
 decode fullTree bytes validBitsLastByte = 
-    go bytes fullTree 7 -- Start at bit 7 (MSB) of first byte
+    go bytes fullTree 7 -- Start at bit 7 (MSB)
   where
-    -- End of stream check
     go [] _ _ = []
     
-    -- Last byte special handling (padding)
     go [lastByte] node bitIdx
-        | bitIdx < (7 - validBitsLastByte + 1) = [] -- Stop if we hit padding
+        | bitIdx < (7 - validBitsLastByte + 1) = [] -- Stop if hitting padding
     
-    -- Normal processing
     go (b:bs) node bitIdx
-        | bitIdx < 0 = go bs node 7 -- Next byte
+        | bitIdx < 0 = go bs node 7 -- Move to next byte
         | otherwise = 
-            let direction = testBit b bitIdx -- Get bit at index (True/1 or False/0)
+            let direction = testBit b bitIdx
                 nextNode = case node of
                     Node _ l r -> if not direction then l else r
                     Leaf _ _   -> error "Logic error: Started at leaf"
             in case nextNode of
-                Leaf c _   -> c : go (b:bs) fullTree bitIdx -- Found char, restart at root, SAME bit
-                Node _ _ _ -> go (b:bs) nextNode (bitIdx - 1) -- Keep going down, NEXT bit
+                -- We found a char. Emit it, restart at root, AND CONSUME THE BIT (bitIdx - 1)
+                Leaf c _   -> c : go (b:bs) fullTree (bitIdx - 1)
+                
+                -- Keep traversing down the tree, consuming the bit
+                Node _ _ _ -> go (b:bs) nextNode (bitIdx - 1)
