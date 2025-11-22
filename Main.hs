@@ -4,54 +4,64 @@ import System.IO
 import DataTypes
 import Processing
 import IOHandler
+import Utils
 
 main :: IO ()
 main = do
-    putStrLn "--- Functional File Compressor (Huffman) ---"
-    putStrLn "Select mode:"
-    putStrLn "1. Compress a file"
-    putStrLn "2. Decompress a file"
+    putStrLn "--- Professional Haskell Compressor (Bit-Packed) ---"
+    putStrLn "1. Compress"
+    putStrLn "2. Decompress"
     putStr "> "
     hFlush stdout
     choice <- getLine
-    
     case choice of
-        "1" -> runCompression
-        "2" -> runDecompression
-        _   -> putStrLn "Invalid choice."
+        "1" -> compress
+        "2" -> decompress
+        _   -> putStrLn "Invalid"
 
-runCompression :: IO ()
-runCompression = do
-    putStrLn "Enter filename to compress (e.g., input.txt):"
+compress :: IO ()
+compress = do
+    putStrLn "File to compress:"
     inFile <- getLine
     content <- readFileContent inFile
     
-    putStrLn "Processing..."
-    let tree = createHuffmanTree content
+    putStrLn "Analyzing..."
+    let freqs = frequencyCount content
+    let tree = createHuffmanTree freqs
     let table = convertTreeToCodes tree
-    let compressed = encode table content
     
-    putStrLn "Enter output filename (e.g., output.huff):"
+    putStrLn "Encoding..."
+    let bits = encode table content
+    
+    putStrLn "Bit Packing..."
+    let (packedBytes, padding) = packBits bits
+    
+    putStrLn "Output filename:"
     outFile <- getLine
-    writeCompressed outFile tree compressed
+    writeBinary outFile freqs packedBytes padding
     
-    -- Calculate theoretical size reduction (simulated for text output)
-    let originalBits = length content * 8
-    let compressedBits = length compressed
-    putStrLn $ "Original Size (bits): " ++ show originalBits
-    putStrLn $ "Compressed Size (bits): " ++ show compressedBits
-    putStrLn "Done."
+    putStrLn $ "Original size (bytes): " ++ show (length content)
+    putStrLn $ "Compressed size (bytes): " ++ show (length packedBytes)
 
-runDecompression :: IO ()
-runDecompression = do
-    putStrLn "Enter filename to decompress (e.g., output.huff):"
+decompress :: IO ()
+decompress = do
+    putStrLn "File to decompress:"
     inFile <- getLine
     
-    (tree, body) <- readCompressed inFile
+    putStrLn "Reading Binary..."
+    (freqs, packedBytes, padding) <- readBinary inFile
     
-    let decoded = decode tree body
+    putStrLn "Reconstructing Tree..."
+    -- Canonical-style: We rebuild the EXACT tree from the frequency map
+    let tree = createHuffmanTree freqs
     
-    putStrLn "Enter output filename (e.g., restored.txt):"
+    putStrLn "Unpacking Bits..."
+    let bits = unpackBits packedBytes padding
+    
+    putStrLn "Decoding..."
+    let decoded = decode tree bits
+    
+    putStrLn "Output filename:"
     outFile <- getLine
     writeFile outFile decoded
-    putStrLn "File restored successfully."
+    putStrLn "Success!"

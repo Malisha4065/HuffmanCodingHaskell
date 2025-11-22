@@ -1,23 +1,20 @@
 module DataTypes where
 
--- | A Huffman Tree is either a Leaf with a character and weight,
---   or a Node with weight and two sub-trees.
+import Data.Word (Word8)
+
+-- | Huffman Tree
 data HuffmanTree = Leaf Char Int
                  | Node Int HuffmanTree HuffmanTree
-                 deriving (Show, Read, Eq)
+                 deriving (Show, Read, Eq, Ord)
 
--- | Bit is represented as a Char '0' or '1'
-type Bit = Char
+-- | Switch from Char '0'/'1' to Int 0/1 for mathematical bit packing
+type Bit = Int
 type BitCode = [Bit]
-
--- | Mapping between a character and its binary code
 type CodeTable = [(Char, BitCode)]
 
--- | Helper to get weight of a tree node
+-- | The Frequency Table is what we save in the header to reconstruct the tree
+type FreqTable = [(Char, Int)]
+
 weight :: HuffmanTree -> Int
 weight (Leaf _ w) = w
 weight (Node w _ _) = w
-
--- | Comparative instance to help with sorting trees by weight
-instance Ord HuffmanTree where
-    compare t1 t2 = compare (weight t1) (weight t2)
