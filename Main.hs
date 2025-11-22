@@ -8,7 +8,7 @@ import Utils
 
 main :: IO ()
 main = do
-    putStrLn "--- Professional Haskell Compressor (Bit-Packed) ---"
+    putStrLn "--- Canonical Huffman Compressor ---"
     putStrLn "1. Compress"
     putStrLn "2. Decompress"
     putStr "> "
@@ -25,23 +25,20 @@ compress = do
     inFile <- getLine
     content <- readFileContent inFile
     
-    putStrLn "Analyzing..."
+    putStrLn "Building Canonical Codes..."
     let freqs = frequencyCount content
-    let tree = createHuffmanTree freqs
-    let table = convertTreeToCodes tree
+    let rawTree = createTree freqs
+    let lenTable = getBitLengths rawTree      -- Get lengths (Standard -> Canonical)
+    let canonTable = canonicalCodes lenTable  -- Assign codes sequentially
     
-    putStrLn "Encoding..."
-    let bits = encode table content
-    
-    putStrLn "Bit Packing..."
-    let (packedBytes, padding) = packBits bits
+    putStrLn "Streaming Encode..."
+    let (packedBytes, validBits) = encode canonTable content
     
     putStrLn "Output filename:"
     outFile <- getLine
-    writeBinary outFile freqs packedBytes padding
+    writeBinary outFile lenTable packedBytes validBits
     
-    putStrLn $ "Original size (bytes): " ++ show (length content)
-    putStrLn $ "Compressed size (bytes): " ++ show (length packedBytes)
+    putStrLn "Done."
 
 decompress :: IO ()
 decompress = do
@@ -49,17 +46,14 @@ decompress = do
     inFile <- getLine
     
     putStrLn "Reading Binary..."
-    (freqs, packedBytes, padding) <- readBinary inFile
+    (lenTable, packedBytes, validBits) <- readBinary inFile
     
-    putStrLn "Reconstructing Tree..."
-    -- Canonical-style: We rebuild the EXACT tree from the frequency map
-    let tree = createHuffmanTree freqs
-    
-    putStrLn "Unpacking Bits..."
-    let bits = unpackBits packedBytes padding
+    putStrLn "Reconstructing Canonical Tree..."
+    let canonTable = canonicalCodes lenTable
+    let tree = rebuildTreeFromCodes canonTable
     
     putStrLn "Decoding..."
-    let decoded = decode tree bits
+    let decoded = decode tree packedBytes validBits
     
     putStrLn "Output filename:"
     outFile <- getLine

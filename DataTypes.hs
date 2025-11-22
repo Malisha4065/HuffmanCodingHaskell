@@ -2,18 +2,15 @@ module DataTypes where
 
 import Data.Word (Word8)
 
--- | Huffman Tree
 data HuffmanTree = Leaf Char Int
                  | Node Int HuffmanTree HuffmanTree
-                 deriving (Show, Read, Eq, Ord)
+                 deriving (Show, Eq, Ord)
 
--- | Switch from Char '0'/'1' to Int 0/1 for mathematical bit packing
-type Bit = Int
-type BitCode = [Bit]
-type CodeTable = [(Char, BitCode)]
+-- | A Map from Char to its Bit Length (e.g., 'A' -> 3 bits)
+type BitLenTable = [(Char, Int)]
 
--- | The Frequency Table is what we save in the header to reconstruct the tree
-type FreqTable = [(Char, Int)]
+-- | A Map from Char to its actual Bits (e.g., 'A' -> [1, 0, 1])
+type CodeTable = [(Char, [Int])]
 
 weight :: HuffmanTree -> Int
 weight (Leaf _ w) = w

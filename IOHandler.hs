@@ -2,53 +2,53 @@ module IOHandler where
 
 import System.IO
 import DataTypes
-import Processing
 import Utils
+import Processing
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C8 -- For handling the Header text
 import Data.Word (Word8)
+import Data.Char (ord, chr)
 
--- | Writes the binary structure:
---   [HeaderLength (4)] + [Header String] + [Padding (1)] + [Body Bytes]
-writeBinary :: FilePath -> [(Char, Int)] -> [Word8] -> Word8 -> IO ()
-writeBinary path freqTable bodyBytes padCount = do
-    -- 1. Serialize the Frequency Table to a String (e.g. "[('a',5)...]")
-    let headerStr = show freqTable
-    let headerBytes = C8.pack headerStr
-    let headerLen = B.length headerBytes
+-- | Write Canonical Binary Format
+--   Header: [NumEntries (1B)] + [(Char (1B), Len (1B))...]
+--   Padding: [ValidBitsInLastByte (1B)]
+--   Body: [Compressed Bytes]
+writeBinary :: FilePath -> BitLenTable -> [Word8] -> Int -> IO ()
+writeBinary path lenTable bodyBytes validBits = do
+    let numEntries = fromIntegral (length lenTable) :: Word8
     
-    -- 2. Convert Length to 4 bytes
-    let lenBytes = B.pack (intToBytes headerLen)
+    -- Serialize Table: Char (1 byte) + Length (1 byte)
+    let tableBytes = concatMap (\(c, l) -> [fromIntegral (ord c), fromIntegral l]) lenTable
     
-    -- 3. Combine everything
-    let finalData = B.concat [ 
-            lenBytes,                  -- 4 bytes
-            headerBytes,               -- N bytes
-            B.singleton padCount,      -- 1 byte
-            B.pack bodyBytes           -- M bytes
+    let finalData = B.concat [
+            B.singleton numEntries,
+            B.pack tableBytes,
+            B.singleton (fromIntegral validBits),
+            B.pack bodyBytes
           ]
-          
+    
     B.writeFile path finalData
     putStrLn $ "Compressed to " ++ path
 
--- | Reads the binary structure and splits it back out
-readBinary :: FilePath -> IO ([(Char, Int)], [Word8], Word8)
+readBinary :: FilePath -> IO (BitLenTable, [Word8], Int)
 readBinary path = do
     content <- B.readFile path
     
-    -- 1. Extract Header Length (First 4 bytes)
-    let (lenBytes, rest1) = B.splitAt 4 content
-    let headerLen = bytesToInt (B.unpack lenBytes)
+    let (numEntriesBS, rest1) = B.splitAt 1 content
+    let numEntries = fromIntegral (B.head numEntriesBS)
     
-    -- 2. Extract Header String
-    let (headerBytes, rest2) = B.splitAt headerLen rest1
-    let freqTable = read (C8.unpack headerBytes) :: [(Char, Int)]
+    -- Read Table (2 * numEntries bytes)
+    let (tableBS, rest2) = B.splitAt (numEntries * 2) rest1
+    let table = parseTable (B.unpack tableBS)
     
-    -- 3. Extract Padding Count (Next 1 byte)
-    let (padByte, bodyBytes) = B.splitAt 1 rest2
-    let padCount = B.head padByte
+    -- Read Padding Info
+    let (padBS, bodyBS) = B.splitAt 1 rest2
+    let validBits = fromIntegral (B.head padBS)
     
-    return (freqTable, B.unpack bodyBytes, padCount)
+    return (table, B.unpack bodyBS, validBits)
+
+  where
+    parseTable [] = []
+    parseTable (c:l:xs) = (chr (fromIntegral c), fromIntegral l) : parseTable xs
 
 readFileContent :: FilePath -> IO String
 readFileContent = readFile
