@@ -1,61 +1,68 @@
 module Main where
 
+import System.Environment (getArgs)
+import System.Exit (exitFailure, exitSuccess)
 import System.IO
 import DataTypes
 import Processing
 import IOHandler
 import Utils
 
+-- | Entry point: Parses command line arguments
 main :: IO ()
 main = do
-    putStrLn "--- Canonical Huffman Compressor ---"
-    putStrLn "1. Compress"
-    putStrLn "2. Decompress"
-    putStr "> "
-    hFlush stdout
-    choice <- getLine
-    case choice of
-        "1" -> compress
-        "2" -> decompress
-        _   -> putStrLn "Invalid"
+    args <- getArgs
+    case args of
+        ["-c", inFile, outFile] -> runCompression inFile outFile
+        ["-d", inFile, outFile] -> runDecompression inFile outFile
+        ["-h"]                  -> printUsage
+        _                       -> printUsage
 
-compress :: IO ()
-compress = do
-    putStrLn "File to compress:"
-    inFile <- getLine
+-- | Prints help message if arguments are wrong
+printUsage :: IO ()
+printUsage = do
+    putStrLn "Usage:"
+    putStrLn "  Compress:   ./compressor -c <input_file> <output_file>"
+    putStrLn "  Decompress: ./compressor -d <input_file> <output_file>"
+    putStrLn "Examples:"
+    putStrLn "  ./compressor -c song.txt song.huff"
+    putStrLn "  ./compressor -d song.huff restored.txt"
+    exitFailure
+
+-- | Compression Logic
+runCompression :: FilePath -> FilePath -> IO ()
+runCompression inFile outFile = do
+    putStrLn $ "Reading " ++ inFile ++ "..."
     content <- readFileContent inFile
     
-    putStrLn "Building Canonical Codes..."
+    putStrLn "Analyzing frequencies..."
     let freqs = frequencyCount content
+    
+    putStrLn "Building Canonical Huffman Tree..."
     let rawTree = createTree freqs
     let lenTable = getBitLengths rawTree
-    let canonTable = canonicalCodes lenTable 
+    let canonTable = canonicalCodes lenTable
     
-    putStrLn "Streaming Encode..."
+    putStrLn "Encoding and Bit-Packing..."
     let (packedBytes, validBits) = encode canonTable content
     
-    putStrLn "Output filename:"
-    outFile <- getLine
     writeBinary outFile lenTable packedBytes validBits
     
-    putStrLn "Done."
+    putStrLn "Compression Complete."
 
-decompress :: IO ()
-decompress = do
-    putStrLn "File to decompress:"
-    inFile <- getLine
-    
-    putStrLn "Reading Binary..."
+-- | Decompression Logic
+runDecompression :: FilePath -> FilePath -> IO ()
+runDecompression inFile outFile = do
+    putStrLn $ "Reading " ++ inFile ++ "..."
     (lenTable, packedBytes, validBits) <- readBinary inFile
     
-    putStrLn "Reconstructing Tree..."
+    putStrLn "Reconstructing Tree from Canonical Lengths..."
     let canonTable = canonicalCodes lenTable
     let tree = rebuildTreeFromCodes canonTable
     
     putStrLn "Decoding..."
     let decoded = decode tree packedBytes validBits
     
-    putStrLn "Output filename:"
-    outFile <- getLine
+    putStrLn $ "Writing to " ++ outFile ++ "..."
     writeFile outFile decoded
-    putStrLn "Success!"
+    putStrLn "Decompression Complete."
