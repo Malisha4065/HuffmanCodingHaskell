@@ -2,7 +2,7 @@
 
 **Compress Files!!!**
 
-## 📝 Problem Description & Industrial Relevance
+## 📝 Problem Description
 In modern computing, efficient data storage and transmission are critical. Standard text files (ASCII/UTF-8) use a fixed width of 8 bits per character, which is wasteful for characters that appear frequently (e.g., 'e', 'a', ' ').
 
 **The Solution:** This project implements **Canonical Huffman Coding**, a lossless data compression algorithm widely used in industrial standards like **ZIP, GZIP, and JPEG**.
@@ -16,28 +16,38 @@ In modern computing, efficient data storage and transmission are critical. Stand
 ### Prerequisites
 * **GHC (Glasgow Haskell Compiler)** (Version 8.0 or higher)
 
-### Compilation & Execution
-You can run the project directly using `runhaskell` or compile it for better performance.
+### 1. Compilation
+First, compile the project to create an executable. This improves performance for larger files.
 
-**Option 1: Run directly**
-```bash
-runhaskell Main.hs
-````
-
-**Option 2: Compile and Run (Recommended)**
-
-Development:
-```bash
-ghc --make Main.hs -o compressor
-./compressor
-# (On Windows: compressor.exe)
-```
-
-Production:
 ```bash
 ghc -O2 --make Main.hs -o compressor
-./compressor
-# (On Windows: compressor.exe)
+# (On Windows, this creates compressor.exe)
+````
+
+### 2\. Usage
+
+The tool is run from the command line using flags.
+
+**Syntax:**
+
+```bash
+./compressor <flag> <input_file> <output_file>
+```
+
+**Flags:**
+
+  * `-c` : Compress a file
+  * `-d` : Decompress a file
+  * `-h` : Show help message
+
+**Examples:**
+
+```bash
+# Compress 'data.txt' into 'data.huff'
+./compressor -c data.txt data.huff
+
+# Decompress 'data.huff' back to 'restored.txt'
+./compressor -d data.huff restored.txt
 ```
 
 -----
@@ -46,35 +56,39 @@ ghc -O2 --make Main.hs -o compressor
 
 ### Compression Workflow
 
+**Command:**
+
+```bash
+./compressor -c example.txt compressed.bin
+```
+
+**Output:**
+
 ```text
---- Canonical Huffman Compressor ---
-1. Compress
-2. Decompress
-> 1
-File to compress:
-example.txt
-Building Canonical Codes...
-Streaming Encode...
-Output filename:
-data.bin
-Done.
+Reading example.txt...
+Analyzing frequencies...
+Building Canonical Huffman Tree...
+Encoding and Bit-Packing...
+Compressed to compressed.bin
+Compression Complete.
 ```
 
 ### Decompression Workflow
 
+**Command:**
+
+```bash
+./compressor -d compressed.bin restored.txt
+```
+
+**Output:**
+
 ```text
---- Canonical Huffman Compressor ---
-1. Compress
-2. Decompress
-> 2
-File to decompress:
-data.bin
-Reading Binary...
-Reconstructing Tree...
+Reading compressed.bin...
+Reconstructing Tree from Canonical Lengths...
 Decoding...
-Output filename:
-restored.txt
-Success!
+Writing to restored.txt...
+Decompression Complete.
 ```
 
 -----
@@ -129,7 +143,7 @@ We utilize Haskell's powerful list processing functions (`map`, `sortBy`, `foldl
 
 The code is separated into single-responsibility modules:
 
-  * `Main.hs`: IO Orchestration and User Interface.
+  * `Main.hs`: CLI Argument Parsing and IO Orchestration.
   * `Processing.hs`: Pure compression/decompression logic.
   * `IOHandler.hs`: Binary file reading/writing.
   * `DataTypes.hs`: Type definitions.
