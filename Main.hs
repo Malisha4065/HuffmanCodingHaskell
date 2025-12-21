@@ -35,8 +35,8 @@ runCompression inFile outFile = do
     putStrLn $ "Reading " ++ inFile ++ "..."
     content <- readFileContent inFile
     
-    putStrLn "Analyzing frequencies..."
-    let freqs = frequencyCount content
+    putStrLn "Analyzing frequencies (parallel)..."
+    let freqs = frequencyCountParallel content
     
     putStrLn "Building Canonical Huffman Tree..."
     let rawTree = createTree freqs
