@@ -1,5 +1,7 @@
 # Canonical Huffman Compressor
 
+YouTube Link: [![Demo Video](https://img.shields.io/badge/▶️_Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/hF7KN6IPwWo)
+
 **Compress Files!!!**
 
 ## 📝 Problem Description
